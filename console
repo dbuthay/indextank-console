@@ -14,6 +14,32 @@ require 'lib/indextank_client'
 
 
 
+COMMANDS = {
+    "url" => "[url] sets the api url",
+    "list" => "lists all the indexes",
+    "index" => "[index name] sets the inde name",
+    "search" => "[query] searches the current index",
+    "suggest" => "[prefix] suggests query terms starting with \"prefix\"",
+    "add" => "[docid] creates a new document",
+    "start" => "[n] show results starting from n",
+    "len" => "[n] show n results",
+    "set" => "shows current settings",
+    "quit" => "exits this shell"
+}
+
+comp = proc { |s| COMMANDS.keys.grep( /^#{Regexp.escape(s)}/ ) }
+
+Readline.completion_append_character = " "
+Readline.completion_proc = comp
+
+def get_prompt()
+    if @idxname
+        return @idxname + "> "
+    else
+        return "> "
+    end
+end
+
 def command(line)
     args = line.split
     case args[0]
@@ -23,7 +49,11 @@ def command(line)
         @data['api'] = @api
         printf "api url set to %s\n", @apiurl
     when "list"
-        @api.list_indexes.each {|x| puts x.name}
+        if !@api
+            puts "no api url set yet. Did you run 'url' .. ?"
+        else
+            @api.list_indexes.each {|x| puts x.name}
+        end
     when "index"
         if !args[1]
             puts @idxname
@@ -41,6 +71,10 @@ def command(line)
             docid = doc['docid']
             printf "docid: #{docid}\n" 
         }
+    when "suggest"
+        query = args[1..args.length].join ' '
+        results = @index.autocomplete(query)
+        printf results['suggestions']
     when "add"
         if @index == nil
             puts 'set an index first'
@@ -73,15 +107,15 @@ def command(line)
         @start = args[1].to_i
         @data['start'] = @start
     when "help"
-        printf "possible commands are:\n\nurl [url] sets the api url\nlist lists all indexes\nindex [index name] sets the index name \
-        \nsearch [query] searches the current index\nadd [docid] creates a new document\nstart [n] show results starting from n\nlen [n] show n results\nset shows current settings\nquit exits this shell\n\n"
-
+        printf "possible commands are:\n\n"
+        COMMANDS.sort.each{|k,v| printf "%s %s\n", k, v}
     else
         puts 'no such command, try "help"'
     end
 end
 
 if File.exists? '.console'
+    puts 'reading previous session from .console'
     @data = Marshal.load File.open('.console')
     @index = @data['index']
     @api = @data['api']
@@ -93,7 +127,7 @@ if File.exists? '.console'
     end
 end
 
-while line = Readline.readline('> ', true) and line != 'quit'
+while line = Readline.readline(get_prompt, true) and line != 'quit'
     begin
         command line
         f = File.open '.console', 'w'
