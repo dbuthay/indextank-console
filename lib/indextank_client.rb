@@ -183,7 +183,20 @@ module IndexTank
                 raise
             end
         end
-    
+   
+        def autocomplete(query, options={})
+            #options.merge!( :query => query, :callback => "mono" )
+            options.merge!( :query => query )
+            begin
+                code, r = GET "/autocomplete", options
+                return r
+            rescue HttpCodeException
+                raise
+            end
+        end
+   
+
+
         def add_function(function_index, definition, options={})
             options.merge!( :definition => definition )
             code, r = PUT "/functions/#{function_index}", options

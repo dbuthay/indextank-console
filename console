@@ -27,8 +27,17 @@ COMMANDS = {
     "quit" => "exits this shell"
 }
 
-comp = proc { |s| COMMANDS.keys.grep( /^#{Regexp.escape(s)}/ ) }
+comp = proc { |s|  if s =~ /^search/ then 
+                        # TODO find a rubier way to split / tail
+                        @index.autocomplete(s.split(' ')[1..10].join(' '))['suggestions'].map { |sug| "search #{sug}" } 
+                    else
+                        # default, complete with commands
+                        COMMANDS.keys.grep( /^#{Regexp.escape(s)}/ ) 
+                    end
+             }
 
+# change the work break character, hacky way to allow multi word autocomplete :)
+Readline.completer_word_break_characters = "|"
 Readline.completion_append_character = " "
 Readline.completion_proc = comp
 
@@ -74,7 +83,11 @@ def command(line)
     when "suggest"
         query = args[1..args.length].join ' '
         results = @index.autocomplete(query)
-        printf results['suggestions']
+        if results['suggestions'].length > 0
+            puts results['suggestions'].join ' '
+        else
+            printf "no suggestions for %s :(\n", query
+        end
     when "add"
         if @index == nil
             puts 'set an index first'
@@ -137,4 +150,4 @@ while line = Readline.readline(get_prompt, true) and line != 'quit'
         puts e
     end
 end
-
+puts 'bye'
