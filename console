@@ -1,16 +1,7 @@
 #!/usr/bin/env ruby 
+require 'rubygems'
 require 'readline'
-require 'lib/indextank_client'
-
-@apiurl = nil
-@idxname = nil
-@api = nil
-@index = nil
-@data = {}
-@start = 0
-@len = 10
-@data['start'] = @start
-@data['len'] = @len
+require 'indextank'
 
 
 
@@ -23,20 +14,26 @@ COMMANDS = {
     "add" => "[docid] creates a new document",
     "start" => "[n] show results starting from n",
     "len" => "[n] show n results",
+    "function" => "[n] use scoring function n for searching\n\t\t[n] [definition] define scoring function n as definition",
+    "functions" => "list current scoring functions",
     "set" => "shows current settings",
+    "reset" => "resets settings. WARNING: it will 'clear' your .console file",
+    "status" => "shows index status",
+    "doc-var" => "[docid] [var index] [var value] sets var index as var value on docid",
+    "query-var" => "[var index] [var value] sets var index as var value for queries\n\t\t[var index] 'clear' clears var index for queries",
     "quit" => "exits this shell"
 }
 
 comp = proc { |s|  if s =~ /^search/ then 
                         # TODO find a rubier way to split / tail
-                        @index.autocomplete(s.split(' ')[1..10].join(' '))['suggestions'].map { |sug| "search #{sug}" } 
+                        @index.suggest(s.split(' ')[1..10].join(' '))['suggestions'].map { |sug| "search #{sug}" } 
                     else
                         # default, complete with commands
                         COMMANDS.keys.grep( /^#{Regexp.escape(s)}/ ) 
                     end
              }
 
-# change the work break character, hacky way to allow multi word autocomplete :)
+# change the work break character, hacky way to allow multi word suggest :)
 Readline.completer_word_break_characters = "|"
 Readline.completion_append_character = " "
 Readline.completion_proc = comp
@@ -49,32 +46,49 @@ def get_prompt()
     end
 end
 
+def reset()
+    @apiurl = nil
+    @idxname = nil
+    @api = nil
+    @index = nil
+    @data = {}
+    @start = 0
+    @len = 10
+    @scoring_function = 0
+    @qvars = {}
+    @data['start'] = @start
+    @data['len'] = @len
+    @data['function'] = @scoring_function
+    @data['qvars'] = @qvars
+end
+
 def command(line)
     args = line.split
     case args[0]
     when "url"
         @apiurl = args[1]
-        @api = IndexTank::ApiClient.new @apiurl
-        @data['api'] = @api
+        @api = IndexTank::Client.new @apiurl
+        @data['url'] = @apiurl
         printf "api url set to %s\n", @apiurl
     when "list"
         if !@api
             puts "no api url set yet. Did you run 'url' .. ?"
         else
-            @api.list_indexes.each {|x| puts x.name}
+            @api.indexes.each {|x| puts x}
         end
     when "index"
         if !args[1]
             puts @idxname
         else
             @idxname = args[1]
-            @index = @api.get_index @idxname
-            @data['index'] = @index
+            @index = @api.indexes @idxname
+            @data['idxname'] = @idxname
+            @index.refresh
             printf "index set to %s\n", @idxname
         end
     when "search"
         query = args[1..args.length].join ' '
-        results = @index.search(query, :start => @start, :len => @len)
+        results = @index.search(query, :start => @start, :len => @len, :variables => @qvars, :function => @scoring_function)
         printf "%s results in %s seconds\n", results['matches'], results['search_time']
         results['results'].each {|doc|
             docid = doc['docid']
@@ -82,7 +96,7 @@ def command(line)
         }
     when "suggest"
         query = args[1..args.length].join ' '
-        results = @index.autocomplete(query)
+        results = @index.suggest(query)
         if results['suggestions'].length > 0
             puts results['suggestions'].join ' '
         else
@@ -113,15 +127,52 @@ def command(line)
         end
     when "set"
         @data.each {|x| p x}
+    when "reset"
+        reset
+    when "status"
+        if not @index
+            puts "no index selected. Did you run 'index <idxname>'?"
+        else
+            puts @index.running?
+        end
     when "len"
         @len = args[1].to_i
         @data['len'] = @len
     when "start"
         @start = args[1].to_i
         @data['start'] = @start
+    when "function"
+        scoring_function_idx = args[1].to_i
+        if args.length > 2
+            @fn = @index.functions scoring_function_idx, args[2..100].join(" ")
+            @fn.add
+        else
+            @scoring_function = scoring_function_idx
+            @data['function'] = @scoring_function
+        end
+    when "functions"
+        @fns = @index.functions
+        @fns.each { |fn| printf "%d => %s\n", fn.index, fn.definition }
+
+    when "doc-var"
+        docid = args[1]
+        varidx = args[2].to_i
+        varval = args[3].to_f
+
+        @index.document(docid).update_variables(varidx => varval)
+    when "query-var"
+        varidx = args[1].to_i
+        varval = args[2]
+        if varval.strip() == 'clear'
+            @qvars.delete(varidx)
+        else
+            @qvars[varidx] = varval.to_f
+        end
+
+        @data['qvars'] = @qvars
     when "help"
         printf "possible commands are:\n\n"
-        COMMANDS.sort.each{|k,v| printf "%s %s\n", k, v}
+        COMMANDS.sort.each{|k,v| printf "%s\t%s%s\n", k, k.length < 8 ? "\t":"",v}
     else
         puts 'no such command, try "help"'
     end
@@ -130,17 +181,18 @@ end
 if File.exists? '.console'
     puts 'reading previous session from .console'
     @data = Marshal.load File.open('.console')
-    @index = @data['index']
-    @api = @data['api']
+    @api = IndexTank::Client.new @data['url']
+    @idxname = @data['idxname']
+    @index = @api.indexes @idxname
     @len = @data['len']
     @start = @data['start']
-    
-    if @index
-        @idxname = @index.name
-    end
+    @scoring_function = @data['function']
+    @qvars = @data['qvars']
+   
+    printf "using %s as connection url\n", @data['url']
 end
 
-while line = Readline.readline(get_prompt, true) and line != 'quit'
+while line = Readline.readline(get_prompt, true) and line.strip() != 'quit'
     begin
         command line
         f = File.open '.console', 'w'
