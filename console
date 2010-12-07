@@ -121,7 +121,7 @@ def command(line)
                    value = Readline.readline('field value: ', true)
                    doc[field] = value
                end
-               @index.add_document(docid, doc)
+               @index.document(docid).add(doc)
                printf("added %s\n", docid)
            end
         end
