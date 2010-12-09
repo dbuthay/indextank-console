@@ -21,6 +21,7 @@ COMMANDS = {
     "status" => "shows index status",
     "doc-var" => "[docid] [var index] [var value] sets var index as var value on docid",
     "query-var" => "[var index] [var value] sets var index as var value for queries\n\t\t[var index] 'clear' clears var index for queries",
+    "promote" => "[docid] [query] promotes docid when searching for query",
     "quit" => "exits this shell"
 }
 
@@ -101,6 +102,14 @@ def command(line)
             puts results['suggestions'].join ' '
         else
             printf "no suggestions for %s :(\n", query
+        end
+    when "promote"
+        if args.length < 3
+            printf "usage: 'promote' %s\n", COMMANDS['promote']
+        else
+            docid = args[1]
+            query = args[2..args.length].join ' '
+            result = @index.promote(docid, query)
         end
     when "add"
         if @index == nil
