@@ -8,10 +8,12 @@ require 'indextank'
 COMMANDS = {
     "url" => "[url] sets the api url",
     "list" => "lists all the indexes",
-    "index" => "[index name] sets the inde name",
+    "index" => "[index name] sets the index name",
+    "create" => "[index name] creates an index",
     "search" => "[query] searches the current index",
     "suggest" => "[prefix] suggests query terms starting with \"prefix\"",
     "add" => "[docid] creates a new document",
+    "delete" => "[docid] deletes a document identified by docid",
     "start" => "[n] show results starting from n",
     "len" => "[n] show n results",
     "function" => "[n] use scoring function n for searching\n\t\t[n] [definition] define scoring function n as definition",
@@ -77,6 +79,15 @@ def command(line)
         else
             @api.indexes.each {|x| puts x}
         end
+    when "create"
+        if !@api
+            puts "no api url set yet. Did you run 'url' .. ?"
+        else
+            @idxname = args[1]
+            tmp_index = @api.indexes @idxname 
+            tmp_index.add()
+            puts "index #{@idxname} created. you may want to run 'index #{@idxname}' to use it"
+        end
     when "index"
         if !args[1]
             puts @idxname
@@ -89,7 +100,7 @@ def command(line)
         end
     when "search"
         query = args[1..args.length].join ' '
-        results = @index.search(query, :start => @start, :len => @len, :variables => @qvars, :function => @scoring_function)
+        results = @index.search(query, :start => @start, :len => @len, :variables => @qvars, :function => @scoring_function, :docvar_filters => { 2 => [[nil,3]]})
         printf "%s results in %s seconds\n", results['matches'], results['search_time']
         results['results'].each {|doc|
             docid = doc['docid']
@@ -134,6 +145,9 @@ def command(line)
                printf("added %s\n", docid)
            end
         end
+    when "delete"
+      docid = args[1]
+      @index.document(docid).delete()
     when "set"
         @data.each {|x| p x}
     when "reset"
