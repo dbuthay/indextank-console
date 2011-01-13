@@ -14,6 +14,7 @@ COMMANDS = {
     "suggest" => "[prefix] suggests query terms starting with \"prefix\"",
     "add" => "[docid] creates a new document",
     "delete" => "[docid] deletes a document identified by docid",
+    "drop" => "[index name] drops index name for good. really, for good.",
     "start" => "[n] show results starting from n",
     "len" => "[n] show n results",
     "function" => "[n] use scoring function n for searching\n\t\t[n] [definition] define scoring function n as definition",
@@ -98,9 +99,20 @@ def command(line)
             @index.refresh
             printf "index set to %s\n", @idxname
         end
+    when "drop"
+      if !args[1]
+        puts "if you really want to drop '#{@idxname}', you should write 'drop #{@idxname}'"
+      else
+        @idxname = args[1]
+        @index = @api.indexes @idxname
+        @index.delete
+        puts "#{@idxname} dropped. Gone for good."
+        @idxname = ""
+        @data['idxname'] = @idxname
+      end
     when "search"
         query = args[1..args.length].join ' '
-        results = @index.search(query, :start => @start, :len => @len, :variables => @qvars, :function => @scoring_function, :docvar_filters => { 2 => [[nil,3]]})
+        results = @index.search(query, :start => @start, :len => @len, :variables => @qvars, :function => @scoring_function)
         printf "%s results in %s seconds\n", results['matches'], results['search_time']
         results['results'].each {|doc|
             docid = doc['docid']
